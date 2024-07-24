@@ -206,18 +206,25 @@ Oqtane.Interop = {
                         returnPromise: true,
                         before: function (path, element) {
                             for (let s = 0; s < scripts.length; s++) {
-                                if (path === scripts[s].href && scripts[s].integrity !== '') {
-                                    element.integrity = scripts[s].integrity;
-                                }
-                                if (path === scripts[s].href && scripts[s].crossorigin !== '') {
-                                    element.crossOrigin = scripts[s].crossorigin;
-                                }
-                                if (path === scripts[s].href && scripts[s].es6module === true) {
-                                    element.type = "module";
-                                }
-                                if (path === scripts[s].href && scripts[s].location === 'body') {
-                                    document.body.appendChild(element);
-                                    return false;  // return false to bypass default DOM insertion mechanism
+                                if (path === scripts[s].href) {
+                                    if (scripts[s].integrity !== '') {
+                                        element.integrity = scripts[s].integrity;
+                                    }
+                                    if (scripts[s].crossorigin !== '') {
+                                        element.crossOrigin = scripts[s].crossorigin;
+                                    }
+                                    if (scripts[s].es6module === true) {
+                                        element.type = "module";
+                                    }
+                                    if (typeof scripts[s].dataAttributes !== "undefined" && scripts[s].dataAttributes !== null) {
+                                        for (var key in scripts[s].dataAttributes) {
+                                            element.setAttribute(key, scripts[s].dataAttributes[key]);
+                                        }
+                                    }
+                                    if (scripts[s].location === 'body') {
+                                        document.body.appendChild(element);
+                                        return false;  // return false to bypass default DOM insertion mechanism
+                                    }
                                 }
                             }
                         }
@@ -284,7 +291,7 @@ Oqtane.Interop = {
         }
         return files;
     },
-    uploadFiles: function (posturl, folder, id, antiforgerytoken) {
+    uploadFiles: function (posturl, folder, id, antiforgerytoken, jwt) {
         var fileinput = document.getElementById('FileInput_' + id);
         var files = fileinput.files;
         var progressinfo = document.getElementById('ProgressInfo_' + id);
@@ -323,6 +330,10 @@ Oqtane.Interop = {
                 data.append('formfile', Chunk, FileName);
                 var request = new XMLHttpRequest();
                 request.open('POST', posturl, true);
+                if (jwt !== "") {
+                    request.setRequestHeader('Authorization', 'Bearer ' + jwt);
+                    request.withCredentials = true;
+                }
                 request.upload.onloadstart = function (e) {
                     if (progressinfo !== null && progressbar !== null) {
                         progressinfo.innerHTML = file.name + ' 0%';
@@ -344,7 +355,7 @@ Oqtane.Interop = {
                 };
                 request.upload.onerror = function() {
                     if (progressinfo !== null && progressbar !== null) {
-                        progressinfo.innerHTML = file.name + ' Error: ' + xhr.status;
+                        progressinfo.innerHTML = file.name + ' Error: ' + request.statusText;
                         progressbar.value = 0;
                     }
                 };

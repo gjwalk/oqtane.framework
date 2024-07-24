@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
@@ -9,9 +12,6 @@ using Oqtane.Infrastructure;
 using Oqtane.Models;
 using Oqtane.Repository;
 using Oqtane.Shared;
-using System.Linq;
-using System.Diagnostics;
-using System.Globalization;
 
 namespace Oqtane.Controllers
 {
@@ -102,6 +102,24 @@ namespace Oqtane.Controllers
             }
         }
 
+        [HttpPut]
+        [Authorize(Roles = RoleNames.Admin)]
+        public void Put([FromBody] Language language)
+        {
+            if (ModelState.IsValid && language.SiteId == _alias.SiteId)
+            {
+                _languages.UpdateLanguage(language);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Language, language.LanguageId, SyncEventActions.Update);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Site, _alias.SiteId, SyncEventActions.Refresh);
+                _logger.Log(LogLevel.Information, this, LogFunction.Create, "Language Updated {Language}", language);
+            }
+            else
+            {
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized Language Put Attempt {Language}", language);
+                HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            }
+        }
+
         [HttpPost]
         [Authorize(Roles = RoleNames.Admin)]
         public Language Post([FromBody] Language language)
@@ -109,8 +127,8 @@ namespace Oqtane.Controllers
             if (ModelState.IsValid && language.SiteId == _alias.SiteId)
             {
                 language = _languages.AddLanguage(language);
-                _syncManager.AddSyncEvent(_alias.TenantId, EntityNames.Language, language.LanguageId, SyncEventActions.Create);
-                _syncManager.AddSyncEvent(_alias.TenantId, EntityNames.Site, _alias.SiteId, SyncEventActions.Refresh);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Language, language.LanguageId, SyncEventActions.Create);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Site, _alias.SiteId, SyncEventActions.Refresh);
                 _logger.Log(LogLevel.Information, this, LogFunction.Create, "Language Added {Language}", language);
             }
             else
@@ -130,8 +148,8 @@ namespace Oqtane.Controllers
             if (language != null && language.SiteId == _alias.SiteId)
             {
                 _languages.DeleteLanguage(id);
-                _syncManager.AddSyncEvent(_alias.TenantId, EntityNames.Language, language.LanguageId, SyncEventActions.Delete);
-                _syncManager.AddSyncEvent(_alias.TenantId, EntityNames.Site, _alias.SiteId, SyncEventActions.Refresh);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Language, language.LanguageId, SyncEventActions.Delete);
+                _syncManager.AddSyncEvent(_alias, EntityNames.Site, _alias.SiteId, SyncEventActions.Refresh);
                 _logger.Log(LogLevel.Information, this, LogFunction.Delete, "Language Deleted {LanguageId}", id);
             }
             else

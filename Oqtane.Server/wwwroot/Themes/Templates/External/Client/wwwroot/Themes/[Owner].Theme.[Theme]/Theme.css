@@ -1,7 +1,13 @@
-﻿/* Oqtane Styles */
+/* Oqtane Styles */
 
 body {
     padding-top: 7rem;
+}
+
+/* App Logo */
+.app-logo .img-fluid {
+    max-height: 90px;
+    padding: 0 5px 0 5px;
 }
 
 .table > :not(caption) > * > * {
@@ -42,6 +48,7 @@ body {
 .app-menu .nav-item {
     font-size: 0.9rem;
     padding-bottom: 0.5rem;
+    white-space: nowrap;
 }
 
 .app-menu .nav-item a {
@@ -83,10 +90,10 @@ div.app-moduleactions a.dropdown-toggle, div.app-moduleactions div.dropdown-menu
   mix-blend-mode: difference;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
 
     .app-menu {
-        width: 100%
+        width: 100%;
     }
 
     .navbar {

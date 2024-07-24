@@ -225,17 +225,6 @@ namespace Oqtane.Repository
                                 }
                             }
                         }
-                        // build list of scripts for site
-                        if (moduledefinition.Resources != null)
-                        {
-                            foreach (var resource in moduledefinition.Resources.Where(item => item.Level == ResourceLevel.Site))
-                            {
-                                if (!serverState.Scripts.Contains(resource))
-                                {
-                                    serverState.Scripts.Add(resource);
-                                }
-                            }
-                        }
                     }
 
                     if (permissions.Count == 0)

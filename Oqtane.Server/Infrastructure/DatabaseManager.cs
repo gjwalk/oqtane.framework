@@ -1,10 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -29,16 +26,14 @@ namespace Oqtane.Infrastructure
     {
         private readonly IConfigManager _config;
         private readonly IServiceScopeFactory _serviceScopeFactory;
-        private readonly IWebHostEnvironment _environment;
         private readonly IMemoryCache _cache;
         private readonly IConfigManager _configManager;
         private readonly ILogger<DatabaseManager> _filelogger;
 
-        public DatabaseManager(IConfigManager config, IServiceScopeFactory serviceScopeFactory, IWebHostEnvironment environment, IMemoryCache cache, IConfigManager configManager, ILogger<DatabaseManager> filelogger)
+        public DatabaseManager(IConfigManager config, IServiceScopeFactory serviceScopeFactory, IMemoryCache cache, IConfigManager configManager, ILogger<DatabaseManager> filelogger)
         {
             _config = config;
             _serviceScopeFactory = serviceScopeFactory;
-            _environment = environment;
             _cache = cache;
             _configManager = configManager;
             _filelogger = filelogger;
@@ -104,12 +99,6 @@ namespace Oqtane.Infrastructure
                     DatabaseType = _config.GetSection(SettingKeys.DatabaseSection)[SettingKeys.DatabaseTypeKey],
                     IsNewTenant = false
                 };
-
-                // on upgrade install the associated Nuget package
-                if (!string.IsNullOrEmpty(install.ConnectionString))
-                {
-                    InstallDatabase(install);
-                }
 
                 var installation = IsInstalled();
                 if (!installation.Success)
@@ -209,57 +198,6 @@ namespace Oqtane.Infrastructure
             return result;
         }
 
-        private Installation InstallDatabase(InstallConfig install)
-        {
-            var result = new Installation {Success = false, Message = string.Empty};
-
-            try
-            {
-                bool installPackages = false;
-
-                // iterate database packages in installation folder
-                var packagesFolder = new DirectoryInfo(Path.Combine(_environment.ContentRootPath, Constants.PackagesFolder));
-                foreach (var package in packagesFolder.GetFiles("*.nupkg.bak"))
-                {
-                    // determine if package needs to be upgraded or installed
-                    bool upgrade = System.IO.File.Exists(package.FullName.Replace(".nupkg.bak",".log"));
-                    if (upgrade || package.Name.StartsWith(Utilities.GetAssemblyName(install.DatabaseType)))
-                    {
-                        var packageName = Path.Combine(package.DirectoryName, package.Name);
-                        packageName = packageName.Substring(0, packageName.IndexOf(".bak"));
-                        package.MoveTo(packageName, true);
-                        installPackages = true;
-                    }
-                }
-                if (installPackages)
-                {
-                    using (var scope = _serviceScopeFactory.CreateScope())
-                    {
-                        var installationManager = scope.ServiceProvider.GetRequiredService<IInstallationManager>();
-                        installationManager.InstallPackages();
-                    }
-                }
-
-                // load the installation database type (if necessary)
-                if (Type.GetType(install.DatabaseType) == null)
-                {
-                    var assemblyPath = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
-                    var assembliesFolder = new DirectoryInfo(assemblyPath);
-                    var assemblyFile = new FileInfo($"{assembliesFolder}/{Utilities.GetAssemblyName(install.DatabaseType)}.dll");
-                    AssemblyLoadContext.Default.LoadOqtaneAssembly(assemblyFile);
-                }
-
-                result.Success = true;
-            }
-            catch (Exception ex)
-            {
-                result.Message = ex.ToString();
-                _filelogger.LogError(Utilities.LogMessage(this, result.Message));
-            }
-
-            return result;
-        }
-
         private Installation CreateDatabase(InstallConfig install)
         {
             var result = new Installation { Success = false, Message = string.Empty };
@@ -268,26 +206,32 @@ namespace Oqtane.Infrastructure
             {
                 try
                 {
-                    InstallDatabase(install);
-
                     var databaseType = install.DatabaseType;
 
                     // get database type
                     var type = Type.GetType(databaseType);
 
-                    // create database object from type
-                    var database = Activator.CreateInstance(type) as IDatabase;
-
-                    // create data directory if does not exist
-                    var dataDirectory = AppDomain.CurrentDomain.GetData(Constants.DataDirectory)?.ToString();
-                    if (!Directory.Exists(dataDirectory)) Directory.CreateDirectory(dataDirectory ?? String.Empty);
-
-                    var dbOptions = new DbContextOptionsBuilder().UseOqtaneDatabase(database, NormalizeConnectionString(install.ConnectionString)).Options;
-                    using (var dbc = new DbContext(dbOptions))
+                    if (type != null)
                     {
-                        // create empty database if it does not exist
-                        dbc.Database.EnsureCreated();
-                        result.Success = true;
+                        // create database object from type
+                        var database = Activator.CreateInstance(type) as IDatabase;
+
+                        // create data directory if does not exist
+                        var dataDirectory = AppDomain.CurrentDomain.GetData(Constants.DataDirectory)?.ToString();
+                        if (!Directory.Exists(dataDirectory)) Directory.CreateDirectory(dataDirectory ?? String.Empty);
+
+                        var dbOptions = new DbContextOptionsBuilder().UseOqtaneDatabase(database, NormalizeConnectionString(install.ConnectionString)).Options;
+                        using (var dbc = new DbContext(dbOptions))
+                        {
+                            // create empty database if it does not exist
+                            dbc.Database.EnsureCreated();
+                            result.Success = true;
+                        }
+                    }
+                    else
+                    {
+                        result.Message = $"The Database Provider {databaseType} Does Not Exist. If This Is A Development Environment Please Ensure You Have Performed A Full Compilation Of All Projects In The Oqtane Solution Prior To Running The Application.";
+                        _filelogger.LogError(Utilities.LogMessage(this, result.Message));
                     }
                 }
                 catch (Exception ex)
@@ -436,7 +380,7 @@ namespace Oqtane.Infrastructure
                         }
                         catch (Exception ex)
                         {
-                            result.Message = "An Error Occurred Migrating A Tenant Database. This Is Usually Related To A Tenant Database Not Being In A Supported State. " + ex.ToString();
+                            result.Message = "An Error Occurred Migrating The Database For Tenant " + tenant.Name + ". This Is Usually Related To Database Permissions, Connection String Mappings, Or The Database Not Being In A Supported State. " + ex.ToString();
                             _filelogger.LogError(Utilities.LogMessage(this, result.Message));
                         }
 
@@ -457,7 +401,7 @@ namespace Oqtane.Infrastructure
                             }
                             catch (Exception ex)
                             {
-                                result.Message = "An Error Occurred Executing Upgrade Logic. " + ex.ToString();
+                                result.Message = "An Error Occurred Executing Upgrade Logic On Tenant " + tenant.Name + ". " + ex.ToString();
                                 _filelogger.LogError(Utilities.LogMessage(this, result.Message));
                             }
                         }
@@ -527,7 +471,7 @@ namespace Oqtane.Infrastructure
                                                 }
                                                 catch (Exception ex)
                                                 {
-                                                    result.Message = "An Error Occurred Installing " + moduleDefinition.Name + " Version " + versions[i] + " - " + ex.ToString();
+                                                    result.Message = "An Error Occurred Installing " + moduleDefinition.Name + " Version " + versions[i] + " On Tenant " + tenant.Name + " - " + ex.ToString();
                                                 }
                                             }
                                         }
@@ -612,8 +556,10 @@ namespace Oqtane.Infrastructure
                                 DefaultContainerType = (!string.IsNullOrEmpty(install.DefaultContainer)) ? install.DefaultContainer : Constants.DefaultContainer,
                                 AdminContainerType = (!string.IsNullOrEmpty(install.DefaultAdminContainer)) ? install.DefaultAdminContainer : Constants.DefaultAdminContainer,
                                 SiteTemplateType = install.SiteTemplate,
-                                Runtime = (!string.IsNullOrEmpty(install.Runtime)) ? install.Runtime : _configManager.GetSection("Runtime").Value,
                                 RenderMode = (!string.IsNullOrEmpty(install.RenderMode)) ? install.RenderMode : _configManager.GetSection("RenderMode").Value,
+                                Runtime = (!string.IsNullOrEmpty(install.Runtime)) ? install.Runtime : _configManager.GetSection("Runtime").Value,
+                                Prerender = true,
+                                Hybrid = false
                             };
                             site = sites.AddSite(site);
 

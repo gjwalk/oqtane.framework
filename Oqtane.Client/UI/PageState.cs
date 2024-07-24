@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Xml.Linq;
 using Oqtane.Models;
 
 namespace Oqtane.UI
@@ -20,11 +18,14 @@ namespace Oqtane.UI
         public string Action { get; set; }
         public bool EditMode { get; set; }
         public DateTime LastSyncDate { get; set; }
+        public string RenderMode { get; set; }
         public Shared.Runtime Runtime { get; set; }
         public int VisitorId { get; set; }
         public string RemoteIPAddress { get; set; }
         public string ReturnUrl { get; set; }
         public bool IsInternalNavigation { get; set; }
+        public Guid RenderId { get; set; }
+        public bool Refresh {  get; set; }
 
         public List<Page> Pages
         {

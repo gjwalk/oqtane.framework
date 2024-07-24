@@ -69,14 +69,24 @@ namespace Oqtane.Models
         public string SiteGuid { get; set; }
 
         /// <summary>
-        /// The hosting model for the site (ie. Server or WebAssembly ).
+        /// The default render mode for the site ie. Static,Interactive,Headless
+        /// </summary>
+        public string RenderMode { get; set; }
+
+        /// <summary>
+        /// The render mode for UI components which require interactivity ie. Server,WebAssembly,Auto
         /// </summary>
         public string Runtime { get; set; }
 
         /// <summary>
-        /// The render mode for the site (ie. Server, ServerPrerendered, WebAssembly, WebAssemblyPrerendered ).
+        /// If the site supports prerendering (only applies to Interactive rendermode)
         /// </summary>
-        public string RenderMode { get; set; }
+        public bool Prerender { get; set; }
+
+        /// <summary>
+        /// Indicates if a site can be integrated with an external .NET MAUI hybrid application
+        /// </summary>
+        public bool Hybrid { get; set; }
 
         /// <summary>
         /// Keeps track of site configuration changes and is used by the ISiteMigration interface
@@ -97,6 +107,18 @@ namespace Oqtane.Models
         /// Content to be included in the body of the page
         /// </summary>
         public string BodyContent { get; set; }
+
+        /// <summary>
+        /// The ImageFile extensions
+        /// </summary>
+        [NotMapped]
+        public string ImageFiles { get; set; }
+
+        /// <summary>
+        /// The UploadableFile extensions
+        /// </summary>
+        [NotMapped]
+        public string UploadableFiles { get; set; }
 
         [NotMapped]
         public Dictionary<string, string> Settings { get; set; }

@@ -135,6 +135,18 @@
                             </div>
                         </div>
                         <div class="row mb-1 align-items-center">
+                            <Label Class="col-sm-3" For="effectiveDate" HelpText="The date that this page is active" ResourceKey="EffectiveDate">Effective Date: </Label>
+                            <div class="col-sm-9">
+                                <input type="date" id="effectiveDate" class="form-control" @bind="@_effectivedate" />
+                            </div>
+                        </div>
+                        <div class="row mb-1 align-items-center">
+                            <Label Class="col-sm-3" For="expiryDate" HelpText="The date that this page expires" ResourceKey="ExpiryDate">Expiry Date: </Label>
+                            <div class="col-sm-9">
+                                <input type="date" id="expiryDate" class="form-control" @bind="@_expirydate" />
+                            </div>
+                        </div>
+                        <div class="row mb-1 align-items-center">
                             <Label Class="col-sm-3" For="personalizable" HelpText="Select whether you would like users to be able to personalize this page with their own content" ResourceKey="Personalizable">Personalizable? </Label>
                             <div class="col-sm-9">
                                 <select id="personalizable" class="form-select" @bind="@_ispersonalizable" required>
@@ -167,9 +179,12 @@
                                 <Label Class="col-sm-3" For="container" HelpText="Select the default container for the page" ResourceKey="DefaultContainer">Default Container: </Label>
                                 <div class="col-sm-9">
                                     <select id="container" class="form-select" @bind="@_containertype" required>
-                                        @foreach (var container in _containers)
+                                        @if (_containers != null)
                                         {
-                                            <option value="@container.TypeName">@container.Name</option>
+                                            foreach (var container in _containers)
+                                            {
+                                                <option value="@container.TypeName">@container.Name</option>
+                                            }
                                         }
                                     </select>
                                 </div>
@@ -222,7 +237,7 @@
                 @if (_themeSettingsType != null)
                 {
                     <TabPanel Name="ThemeSettings" Heading="Theme Settings" ResourceKey="ThemeSettings">
-                        @ThemeSettingsComponent
+                        @_themeSettingsComponent
                     </TabPanel>
                     <br />
                 }
@@ -266,7 +281,7 @@
                 @if (_themeSettingsType != null)
                 {
                     <TabPanel Name="ThemeSettings" Heading="Theme Settings" ResourceKey="ThemeSettings">
-                        @ThemeSettingsComponent
+                        @_themeSettingsComponent
                     </TabPanel>
                     <br />
                 }
@@ -305,7 +320,7 @@
     private string _containertype = "-";
     private Type _themeSettingsType;
     private object _themeSettings;
-    private RenderFragment ThemeSettingsComponent { get; set; }
+    private RenderFragment _themeSettingsComponent { get; set; }
     private string _headcontent;
     private string _bodycontent;
     private List<Permission> _permissions = null;
@@ -322,6 +337,8 @@
     protected Page _parent = null;
     protected Dictionary<string, string> _icons;
     private string _iconresources = "";
+    private DateTime? _effectivedate = null;
+    private DateTime? _expirydate = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -370,6 +387,8 @@
                 }
                 _url = _page.Url;
                 _icon = _page.Icon;
+                _effectivedate = Utilities.UtcAsLocalDate(_page.EffectiveDate);
+                _expirydate = Utilities.UtcAsLocalDate(_page.ExpiryDate);
                 _ispersonalizable = _page.IsPersonalizable.ToString();
 
                 // appearance
@@ -447,29 +466,34 @@
     private void ThemeChanged(ChangeEventArgs e)
     {
         _themetype = (string)e.Value;
+        _containers = ThemeService.GetContainerControls(PageState.Site.Themes, _themetype);
+        _containertype = _containers.First().TypeName;
+        ThemeSettings();
+        StateHasChanged();
+
+        // if theme chosen is different than default site theme, display warning message to user
         if (ThemeService.GetTheme(PageState.Site.Themes, _themetype)?.ThemeName != ThemeService.GetTheme(PageState.Site.Themes, PageState.Site.DefaultThemeType)?.ThemeName)
         {
             AddModuleMessage(Localizer["ThemeChanged.Message"], MessageType.Warning);
-            _containers = ThemeService.GetContainerControls(PageState.Site.Themes, _themetype);
-            _containertype = _containers.First().TypeName;
-            ThemeSettings();
-            StateHasChanged();
         }
     }
 
     private void ThemeSettings()
     {
         _themeSettingsType = null;
+        _themeSettingsComponent = null;
         var theme = PageState.Site.Themes.FirstOrDefault(item => item.Themes.Any(themecontrol => themecontrol.TypeName.Equals(_themetype)));
         if (theme != null && !string.IsNullOrEmpty(theme.ThemeSettingsType))
         {
             _themeSettingsType = Type.GetType(theme.ThemeSettingsType);
             if (_themeSettingsType != null)
             {
-                ThemeSettingsComponent = builder =>
+                _themeSettingsComponent = builder =>
                 {
                     builder.OpenComponent(0, _themeSettingsType);
-                    builder.AddComponentReferenceCapture(1, inst => { _themeSettings = Convert.ChangeType(inst, _themeSettingsType); });
+                    builder.AddAttribute(1, "RenderModeBoundary", RenderModeBoundary);
+                    builder.AddComponentReferenceCapture(2, inst => { _themeSettings = Convert.ChangeType(inst, _themeSettingsType); });
+                    
                     builder.CloseComponent();
                 };
             }
@@ -485,16 +509,31 @@
         {
             try
             {
+                if (!Utilities.ValidateEffectiveExpiryDates(_effectivedate, _expirydate))
+                {
+                    AddModuleMessage(SharedLocalizer["Message.EffectiveExpiryDateError"], MessageType.Warning);
+                    return;
+                }
                 if (!string.IsNullOrEmpty(_themetype) && _containertype != "-")
                 {
                     string currentPath = _page.Path;
 
                     _page.Name = _name;
 
+                    if (_parentid == "-1")
+                    {
+                        _page.ParentId = null;
+                    }
+                    else
+                    {
+                        _page.ParentId = Int32.Parse(_parentid);
+                    }
+
                     if (string.IsNullOrEmpty(_path))
                     {
                         _path = _name;
                     }
+
                     if (_path.Contains("/"))
                     {
                         if (_path.EndsWith("/") && _path != "/")
@@ -503,15 +542,12 @@
                         }
                         _path = _path.Substring(_path.LastIndexOf("/") + 1);
                     }
-
                     if (_parentid == "-1")
                     {
-                        _page.ParentId = null;
                         _page.Path = Utilities.GetFriendlyUrl(_path);
                     }
                     else
                     {
-                        _page.ParentId = Int32.Parse(_parentid);
                         Page parent = PageState.Pages.FirstOrDefault(item => item.PageId == _page.ParentId);
                         if (parent.Path == string.Empty)
                         {
@@ -561,6 +597,8 @@
                     _page.IsClickable = (_isclickable == null ? true : Boolean.Parse(_isclickable));
                     _page.Url = _url;
                     _page.Icon = _icon ?? string.Empty;
+                    _page.EffectiveDate = Utilities.LocalDateAndTimeAsUtc(_effectivedate);
+                    _page.ExpiryDate = Utilities.LocalDateAndTimeAsUtc(_expirydate);
                     _page.IsPersonalizable = (_ispersonalizable != null && Boolean.Parse(_ispersonalizable));
 
                     // appearance
@@ -605,11 +643,11 @@
                     await logger.LogInformation("Page Saved {Page}", _page);
                     if (!string.IsNullOrEmpty(PageState.ReturnUrl))
                     {
-                        NavigationManager.NavigateTo(PageState.ReturnUrl);
+                        NavigationManager.NavigateTo(PageState.ReturnUrl, true);
                     }
                     else
                     {
-                        NavigationManager.NavigateTo(NavigateUrl());
+                        NavigationManager.NavigateTo(NavigateUrl(), true); // redirect to page being edited
                     }
                 }
                 else

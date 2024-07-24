@@ -12,6 +12,9 @@
     <Authorizing>
         <text>...</text>
     </Authorizing>
+    <Authorized>
+        <ModuleMessage Message="@Localizer["Info.SignedIn"]" Type="MessageType.Info" />
+    </Authorized>
     <NotAuthorized>
 		@if (!twofactor)
 		{
@@ -36,16 +39,24 @@
 						</div>
 					</div>
 					<div class="form-group mt-2">
-						<div class="form-check">
-							<input id="remember" type="checkbox" class="form-check-input" @bind="@_remember" />
-							<Label Class="control-label" For="remember" HelpText="Specify if you would like to be signed back in automatically the next time you visit this site" ResourceKey="Remember">Remember Me?</Label>
-						</div>
+						@if (!_alwaysremember)
+						{
+						    <div class="form-check">
+							    <input id="remember" type="checkbox" class="form-check-input" @bind="@_remember" />
+							    <Label Class="control-label" For="remember" HelpText="Specify if you would like to be signed back in automatically the next time you visit this site" ResourceKey="Remember">Remember Me?</Label>
+						    </div>
+						}
 					</div>
 					<button type="button" class="btn btn-primary" @onclick="Login">@SharedLocalizer["Login"]</button>
 					<button type="button" class="btn btn-secondary" @onclick="Cancel">@SharedLocalizer["Cancel"]</button>
 					<br /><br />
-					<button type="button" class="btn btn-secondary" @onclick="Forgot">@Localizer["ForgotPassword"]</button>		
-				}
+                    <button type="button" class="btn btn-secondary" @onclick="Forgot">@Localizer["ForgotPassword"]</button>
+                        @if (PageState.Site.AllowRegistration)
+                        {
+                            <br /><br />
+                            <NavLink  href="@NavigateUrl("register")">@Localizer["Register"]</NavLink>
+                        }
+                    }
 				</div>
 			</form>
 		}
@@ -78,9 +89,8 @@
     private string _passwordtype = "password";
     private string _togglepassword = string.Empty;
     private bool _remember = false;
+    private bool _alwaysremember = false;
     private string _code = string.Empty;
-
-    private string _returnUrl = string.Empty;
 
     public override SecurityAccessLevel SecurityAccessLevel => SecurityAccessLevel.Anonymous;
 
@@ -93,20 +103,9 @@
     {
         try
         {
-            if (PageState.QueryString.ContainsKey("returnurl"))
-            {
-                _returnUrl = PageState.QueryString["returnurl"];
-            }
-
             _allowexternallogin = (SettingService.GetSetting(PageState.Site.Settings, "ExternalLogin:ProviderType", "") != "") ? true : false;
             _allowsitelogin = bool.Parse(SettingService.GetSetting(PageState.Site.Settings, "LoginOptions:AllowSiteLogin", "true"));
-
-            if (_allowexternallogin && !_allowsitelogin)
-            {
-                // redirect to external login
-                NavigationManager.NavigateTo(Utilities.TenantUrl(PageState.Alias, "/pages/external?returnurl=" + _returnUrl), true);
-                return;
-            }
+            _alwaysremember = bool.Parse(SettingService.GetSetting(PageState.Site.Settings, "LoginOptions:AlwaysRemember", "false"));
 
             _togglepassword = SharedLocalizer["ShowPassword"];
 
@@ -170,11 +169,14 @@
     {
         if (firstRender && PageState.User == null && _allowsitelogin)
         {
-            await username.FocusAsync();
+            if (!string.IsNullOrEmpty(username.Id)) // ensure username is visible in UI
+            {
+                await username.FocusAsync();
+            }
         }
 
         // redirect logged in user to specified page
-        if (PageState.User != null)
+        if (PageState.User != null && !UserSecurity.IsAuthorized(PageState.User, RoleNames.Admin))
         {
             NavigationManager.NavigateTo(PageState.ReturnUrl);
         }
@@ -192,7 +194,8 @@
                 var user = new User { SiteId = PageState.Site.SiteId, Username = _username, Password = _password, LastIPAddress = SiteState.RemoteIPAddress};
 
                 if (!twofactor)
-                {
+                { 
+                    _remember = _alwaysremember || _remember;
                     user = await UserService.LoginUserAsync(user, hybrid, _remember);
                 }
                 else
@@ -209,12 +212,12 @@
                         // hybrid apps utilize an interactive login
                         var authstateprovider = (IdentityAuthenticationStateProvider)ServiceProvider.GetService(typeof(IdentityAuthenticationStateProvider));
                         authstateprovider.NotifyAuthenticationChanged();
-                        NavigationManager.NavigateTo(NavigateUrl(WebUtility.UrlDecode(_returnUrl), true));
+                        NavigationManager.NavigateTo(NavigateUrl(PageState.ReturnUrl, true));
                     }
                     else
                     {
                         // post back to the Login page so that the cookies are set correctly
-                        var fields = new { __RequestVerificationToken = SiteState.AntiForgeryToken, username = _username, password = _password, remember = _remember, returnurl = _returnUrl };
+                        var fields = new { __RequestVerificationToken = SiteState.AntiForgeryToken, username = _username, password = _password, remember = _remember, returnurl = WebUtility.UrlEncode(PageState.ReturnUrl) };
                         string url = Utilities.TenantUrl(PageState.Alias, "/pages/login/");
                         await interop.SubmitForm(url, fields);
                     }
@@ -256,7 +259,7 @@
 
     private void Cancel()
     {
-        NavigationManager.NavigateTo(_returnUrl);
+        NavigationManager.NavigateTo(PageState.ReturnUrl);
     }
 
     private async Task Forgot()
@@ -324,7 +327,7 @@
 
     private void ExternalLogin()
     {
-        NavigationManager.NavigateTo(Utilities.TenantUrl(PageState.Alias, "/pages/external?returnurl=" + _returnUrl), true);
+        NavigationManager.NavigateTo(Utilities.TenantUrl(PageState.Alias, "/pages/external?returnurl=" + WebUtility.UrlEncode(PageState.ReturnUrl)), true);
     }
 
 }

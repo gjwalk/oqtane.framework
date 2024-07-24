@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using File = Oqtane.Models.File;
@@ -20,68 +21,50 @@ namespace Oqtane.Shared
             return $"{type.Namespace}, {assemblyName}";
         }
 
-        public static (string UrlParameters, string Querystring, string Anchor) ParseParameters(string parameters)
+        public static (string UrlParameters, string Querystring, string Fragment) ParseParameters(string parameters)
         {
             // /urlparameters /urlparameters?Id=1 /urlparameters#5 /urlparameters?Id=1#5 /urlparameters?reload#5
-
             // Id=1 Id=1#5 reload#5 reload
-
             // #5
 
-            var urlparameters = string.Empty;
-            var querystring = string.Empty;
-            var anchor = string.Empty;
+            // create absolute url to convert to Uri
+            parameters = (!parameters.StartsWith("/") && !parameters.StartsWith("#") ? "?" : "") + parameters;
+            parameters = Constants.PackageRegistryUrl + parameters;
+            var uri = new Uri(parameters);
+            var querystring = uri.Query.Replace("?", "");
+            var fragment = uri.Fragment.Replace("#", "");
+            var urlparameters = uri.LocalPath;
+            urlparameters = (urlparameters == "/") ? "" : urlparameters;
 
-            if (parameters.Contains('#'))
-            {
-                anchor = parameters.Split('#').Last();
-                parameters = parameters.Replace("#" + anchor, "");
-            }
-
-            if (parameters.Contains('?'))
-            {
-                urlparameters = parameters.Split('?').First();
-                querystring = parameters.Replace(urlparameters + "?", "");
-            }
-            else if (parameters.Contains('/'))
-            {
-                urlparameters = parameters;
-            }
-            else
-            {
-                querystring = parameters;
-            }
-
-            return (urlparameters, querystring, anchor);
+            return (urlparameters, querystring, fragment);
         }
 
         public static string NavigateUrl(string alias, string path, string parameters)
         {
-            string urlparameters;
-            string querystring;
-            string anchor;
+            string querystring = "";
+            string fragment = "";
 
-            // parse parameters
-            (urlparameters, querystring, anchor) = ParseParameters(parameters);
-            if (!string.IsNullOrEmpty(urlparameters))
+            if (!string.IsNullOrEmpty(parameters))
             {
-                if (urlparameters.StartsWith("/")) urlparameters = urlparameters.Remove(0, 1);
-                path += $"/{Constants.UrlParametersDelimiter}/{urlparameters}";
+                // parse parameters
+                (string urlparameters, querystring, fragment) = ParseParameters(parameters);
+                if (!string.IsNullOrEmpty(urlparameters))
+                {
+                    path += (path.EndsWith("/") ? "" : "/") + $"{Constants.UrlParametersDelimiter}/{urlparameters.Substring(1)}";
+                }
             }
 
             // build url
             var uriBuilder = new UriBuilder
             {
                 Path = !string.IsNullOrEmpty(alias)
-                    ? (!string.IsNullOrEmpty(path))
-                        ? $"{alias}/{path}"
-                        : $"{alias}"
+                    ? (!string.IsNullOrEmpty(path)) ? $"{alias}{path}": $"{alias}"
                     : $"{path}",
                 Query = querystring,
+                Fragment = fragment
             };
 
-            anchor = string.IsNullOrEmpty(anchor) ? "" : "#" + anchor;
-            return uriBuilder.Uri.PathAndQuery + anchor;
+            return uriBuilder.Uri.PathAndQuery;
         }
 
         public static string EditUrl(string alias, string path, int moduleid, string action, string parameters)
@@ -230,12 +213,12 @@ namespace Oqtane.Shared
             return name;
         }
 
-        public static string GetFriendlyUrl(string text)
+        public static string GetFriendlyUrl(string url)
         {
             string result = "";
-            if (text != null)
+            if (url != null)
             {
-                var normalizedString = text.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+                var normalizedString = WebUtility.UrlDecode(url).ToLowerInvariant().Normalize(NormalizationForm.FormD);
                 var stringBuilder = new StringBuilder();
                 var stringLength = normalizedString.Length;
                 var prevdash = false;
@@ -572,7 +555,55 @@ namespace Oqtane.Shared
 
             return (localDateTime?.Date, localTime);
         }
+        public static bool IsPageModuleVisible(DateTime? effectiveDate, DateTime? expiryDate)
+        {
+            DateTime currentUtcTime = DateTime.UtcNow;
 
+            if (effectiveDate.HasValue && expiryDate.HasValue)
+            {
+                return currentUtcTime >= effectiveDate.Value && currentUtcTime <= expiryDate.Value;
+            }
+            else if (effectiveDate.HasValue)
+            {
+                return currentUtcTime >= effectiveDate.Value;
+            }
+            else if (expiryDate.HasValue)
+            {
+                // Include equality check here
+                return currentUtcTime <= expiryDate.Value;
+            }
+            else
+            {
+                return true;
+            }
+        }
+        public static bool ValidateEffectiveExpiryDates(DateTime? effectiveDate, DateTime? expiryDate)
+        {
+            // Treat DateTime.MinValue as null
+            effectiveDate ??= DateTime.MinValue;
+            expiryDate ??= DateTime.MinValue;
+
+            // Check if both effectiveDate and expiryDate have values
+            if (effectiveDate != DateTime.MinValue && expiryDate != DateTime.MinValue)
+            {
+                return effectiveDate <= expiryDate;
+            }
+            // Check if only effectiveDate has a value
+            else if (effectiveDate != DateTime.MinValue)
+            {
+                return true;
+            }
+            // Check if only expiryDate has a value
+            else if (expiryDate != DateTime.MinValue)
+            {
+                return true;
+            }
+            // If neither effectiveDate nor expiryDate has a value, consider the page/module visible
+            else
+            {
+                return true;
+            }
+        }
         [Obsolete("ContentUrl(Alias alias, int fileId) is deprecated. Use FileUrl(Alias alias, int fileId) instead.", false)]
         public static string ContentUrl(Alias alias, int fileId)
         {

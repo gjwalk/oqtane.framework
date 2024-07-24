@@ -35,6 +35,9 @@ app {
     }
 
 /* Action Dialog */
+.app-actiondialog{
+    position: absolute;
+}
 .app-actiondialog .modal {
     position: fixed; /* Stay in place */
     z-index: 9999; /* Sit on top */
@@ -227,4 +230,8 @@ app {
 
 .app-fas {
     margin-left: 5px;
+}
+
+.app-form-inline {
+    display: inline-block;
 }

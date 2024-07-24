@@ -3,6 +3,7 @@
 @inherits ModuleBase
 @inject NavigationManager NavigationManager
 @inject IThemeService ThemeService
+@inject IPageService PageService
 @inject IModuleService ModuleService
 @inject IPageModuleService PageModuleService
 @inject IStringLocalizer<Settings> Localizer
@@ -79,14 +80,16 @@
                                 }
                                 else
                                 {
-                                    foreach (Page p in PageState.Pages)
+                                    if (_pages != null)
                                     {
-                                        if (UserSecurity.IsAuthorized(PageState.User, PermissionNames.Edit, p.PermissionList))
+                                        foreach (Page p in _pages)
                                         {
-                                            <option value="@p.PageId">@(new string('-', p.Level * 2))@(p.Name)</option>
+                                            if (UserSecurity.IsAuthorized(PageState.User, PermissionNames.Edit, p.PermissionList))
+                                            {
+                                                <option value="@p.PageId">@(new string('-', p.Level * 2))@(p.Name)</option>
+                                            }
                                         }
                                     }
-
                                 }
                             </select>
                         </div>
@@ -94,7 +97,7 @@
                 </div>
             }
         </TabPanel>
-        <TabPanel Name="Permissions" ResourceKey="Permissions">
+        <TabPanel Name="Permissions" Heading="Permissions" ResourceKey="Permissions">
             @if (_permissions != null)
             {
                 <div class="container">
@@ -126,9 +129,8 @@
     <AuditInfo CreatedBy="@createdby" CreatedOn="@createdon" ModifiedBy="@modifiedby" ModifiedOn="@modifiedon"></AuditInfo>
 </form>
 
-    @code {
+@code {
     public override SecurityAccessLevel SecurityAccessLevel => SecurityAccessLevel.Edit;
-    public override string Title => "Module Settings";
 
     private ElementReference form;
     private bool validated = false;
@@ -144,7 +146,7 @@
     private PermissionGrid _permissionGrid;
     private Type _moduleSettingsType;
     private object _moduleSettings;
-    private string _moduleSettingsTitle = "Module Settings";
+    private string _moduleSettingsTitle;
     private RenderFragment ModuleSettingsComponent { get; set; }
     private Type _containerSettingsType;
     private object _containerSettings;
@@ -155,11 +157,15 @@
     private DateTime modifiedon;
     private DateTime? _effectivedate = null;
     private DateTime? _expirydate = null;
+    private List<Page> _pages;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        SetModuleTitle(Localizer["ModuleSettings.Title"]);
+
         _module = ModuleState.ModuleDefinition.Name;
         _title = ModuleState.Title;
+        _moduleSettingsTitle = Localizer["ModuleSettings.Heading"];
         _pane = ModuleState.Pane;
         _containers = ThemeService.GetContainerControls(PageState.Site.Themes, PageState.Page.ThemeType);
         _containerType = ModuleState.ContainerType;
@@ -172,6 +178,7 @@
         modifiedon = ModuleState.ModifiedOn;
         _effectivedate = Utilities.UtcAsLocalDate(ModuleState.EffectiveDate);
         _expirydate = Utilities.UtcAsLocalDate(ModuleState.ExpiryDate);
+        _pages = await PageService.GetPagesAsync(PageState.Site.SiteId);
 
         if (ModuleState.ModuleDefinition != null)
         {

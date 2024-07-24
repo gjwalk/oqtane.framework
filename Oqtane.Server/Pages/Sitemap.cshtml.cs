@@ -52,7 +52,7 @@ namespace Oqtane.Pages
             var pageModules = _pageModules.GetPageModules(_alias.SiteId);
             foreach (var page in _pages.GetPages(_alias.SiteId))
             {
-                if (_userPermissions.IsAuthorized(null, PermissionNames.View, page.PermissionList) && page.IsNavigation)
+                if (_userPermissions.IsAuthorized(null, PermissionNames.View, page.PermissionList) && !Constants.InternalPagePaths.Contains(page.Path))
                 {
                     var pageurl = rooturl;
                     if (string.IsNullOrEmpty(page.Url))
@@ -63,7 +63,7 @@ namespace Oqtane.Pages
                     {
                         pageurl += (page.Url.StartsWith("/") ? "" : "/") + page.Url;
                     }
-                    sitemap.Add(new Sitemap { Url = rooturl + pageurl, ModifiedOn = DateTime.UtcNow });
+                    sitemap.Add(new Sitemap { Url = pageurl, ModifiedOn = DateTime.UtcNow });
 
                     foreach (var pageModule in pageModules.Where(item => item.PageId == page.PageId))
                     {
@@ -73,7 +73,7 @@ namespace Oqtane.Pages
                             if (moduleDefinition != null && moduleDefinition.ServerManagerType != "")
                             {
                                 Type moduletype = Type.GetType(moduleDefinition.ServerManagerType);
-                                if (moduletype != null && moduletype.GetInterface("ISitemap") != null)
+                                if (moduletype != null && moduletype.GetInterface(nameof(ISitemap)) != null)
                                 {
                                     try
                                     {

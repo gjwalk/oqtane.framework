@@ -44,9 +44,10 @@ namespace Oqtane.Shared
             string querystring = "";
             string fragment = "";
 
+            if (!string.IsNullOrEmpty(path) && !path.StartsWith("/")) path = "/" + path;
+
             if (!string.IsNullOrEmpty(parameters))
             {
-                // parse parameters
                 (string urlparameters, querystring, fragment) = ParseParameters(parameters);
                 if (!string.IsNullOrEmpty(urlparameters))
                 {
@@ -138,6 +139,9 @@ namespace Oqtane.Shared
 
         public static string FormatContent(string content, Alias alias, string operation)
         {
+            if (string.IsNullOrEmpty(content) || alias == null)
+                return content;
+
             var aliasUrl = (alias != null && !string.IsNullOrEmpty(alias.Path)) ? "/" + alias.Path : "";
             switch (operation)
             {
@@ -149,6 +153,7 @@ namespace Oqtane.Shared
                     break;
                 case "render":
                     content = content.Replace(Constants.FileUrl, alias?.BaseUrl + aliasUrl + Constants.FileUrl);
+                    content = content.Replace("[wwwroot]", alias?.BaseUrl + aliasUrl + "/");
                     // legacy
                     content = content.Replace("[siteroot]", UrlCombine("Content", "Tenants", alias.TenantId.ToString(), "Sites", alias.SiteId.ToString()));
                     content = content.Replace(Constants.ContentUrl, alias.Path + Constants.ContentUrl);
@@ -555,7 +560,7 @@ namespace Oqtane.Shared
 
             return (localDateTime?.Date, localTime);
         }
-        public static bool IsPageModuleVisible(DateTime? effectiveDate, DateTime? expiryDate)
+        public static bool IsEffectiveAndNotExpired(DateTime? effectiveDate, DateTime? expiryDate)
         {
             DateTime currentUtcTime = DateTime.UtcNow;
 
@@ -577,6 +582,7 @@ namespace Oqtane.Shared
                 return true;
             }
         }
+
         public static bool ValidateEffectiveExpiryDates(DateTime? effectiveDate, DateTime? expiryDate)
         {
             // Treat DateTime.MinValue as null
@@ -604,6 +610,7 @@ namespace Oqtane.Shared
                 return true;
             }
         }
+
         [Obsolete("ContentUrl(Alias alias, int fileId) is deprecated. Use FileUrl(Alias alias, int fileId) instead.", false)]
         public static string ContentUrl(Alias alias, int fileId)
         {
@@ -618,5 +625,12 @@ namespace Oqtane.Shared
 
             return $"{alias?.BaseUrl}{aliasUrl}{Constants.ContentUrl}{fileId}{method}";
         }
+
+        [Obsolete("IsPageModuleVisible(DateTime?, DateTime?) is deprecated. Use IsEffectiveAndNotExpired(DateTime?, DateTime?) instead.", false)]
+        public static bool IsPageModuleVisible(DateTime? effectiveDate, DateTime? expiryDate)
+        {
+            return IsEffectiveAndNotExpired(effectiveDate, expiryDate);
+        }
+
     }
 }
